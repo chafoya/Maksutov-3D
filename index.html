@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telescopio Maksutov-Cassegrain — Simulación Óptica 3D</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Exo 2', sans-serif; color: #c8e6ff; }
+  #canvas-container { width: 100vw; height: 100vh; position: relative; }
+  canvas { display: block; }
+  #stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+
+  #title {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    text-align: center; pointer-events: none; z-index: 20;
+  }
+  #title h1 {
+    font-family: 'Exo 2', sans-serif; font-weight: 600; font-size: 1.15rem;
+    letter-spacing: 0.18em; color: #e0f4ff; text-transform: uppercase;
+    text-shadow: 0 0 18px #4db8ff88;
+  }
+  #title p { font-family: 'Share Tech Mono', monospace; font-size: 0.62rem; letter-spacing: 0.12em; color: #5599cc; margin-top: 3px; }
+
+  /* ── INFO PANEL (derecha) ── */
+  #info-panel {
+    position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+    width: 268px; background: rgba(4,14,28,0.88);
+    border: 1px solid #1a3a5c; border-left: 3px solid #4db8ff;
+    border-radius: 6px; padding: 16px 14px; z-index: 20;
+    backdrop-filter: blur(8px); max-height: 90vh; overflow-y: auto;
+  }
+  #info-panel h2 { font-family: 'Share Tech Mono', monospace; font-size: 0.68rem; letter-spacing: 0.2em; color: #4db8ff; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #1a3a5c; padding-bottom: 7px; }
+  .info-step { display: flex; gap: 9px; margin-bottom: 11px; align-items: flex-start; }
+  .step-num { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; color: #ffd700; background: rgba(255,215,0,0.1); border: 1px solid #ffd70044; border-radius: 3px; padding: 2px 5px; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 0.68rem; line-height: 1.55; color: #a8c8e8; }
+  .step-text strong { color: #d0eaff; display: block; margin-bottom: 2px; font-size: 0.69rem; }
+  .formula-mini { font-family: 'Share Tech Mono', monospace; font-size: 0.58rem; color: #3a6a9a; line-height: 1.8; margin-top: 10px; padding-top: 8px; border-top: 1px solid #1a3a5c; }
+
+  /* ── PANEL DESMONTAJE (izquierda) ── */
+  #disassembly-panel {
+    position: fixed; left: 16px; top: 50%; transform: translateY(-50%);
+    width: 210px; background: rgba(4,14,28,0.92);
+    border: 1px solid #1a3a5c; border-right: 3px solid #ffd700;
+    border-radius: 6px; padding: 14px 12px; z-index: 20;
+    backdrop-filter: blur(8px);
+  }
+  #disassembly-panel h3 { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; letter-spacing: 0.18em; color: #ffd700; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #1a3a5c; padding-bottom: 7px; }
+
+  .part-btn {
+    width: 100%; background: rgba(20,40,70,0.6); border: 1px solid #1a3a5c;
+    border-radius: 4px; padding: 8px 10px; margin-bottom: 6px;
+    cursor: pointer; text-align: left; transition: all 0.2s;
+    display: flex; align-items: center; gap: 8px; color: #8ab8d8;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.63rem;
+    letter-spacing: 0.06em;
+  }
+  .part-btn:hover { background: rgba(40,80,140,0.5); border-color: #4db8ff44; color: #c8e6ff; }
+  .part-btn.active { background: rgba(255,215,0,0.12); border-color: #ffd700; color: #ffd700; }
+  .part-btn.hidden-part { opacity: 0.38; }
+  .part-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .ctrl-row { display: flex; gap: 6px; margin-top: 10px; }
+  .ctrl-btn {
+    flex: 1; background: rgba(20,40,70,0.6); border: 1px solid #1a3a5c;
+    border-radius: 4px; padding: 6px 4px; cursor: pointer;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.58rem;
+    letter-spacing: 0.06em; color: #5599cc; transition: all 0.2s;
+    text-align: center;
+  }
+  .ctrl-btn:hover { border-color: #4db8ff; color: #c8e6ff; }
+  .ctrl-btn.red { border-color: #ff4444; color: #ff8888; }
+  .ctrl-btn.red:hover { background: rgba(255,60,60,0.15); }
+
+  /* ── EXPLODE MODE LABEL ── */
+  #mode-badge {
+    position: fixed; top: 68px; left: 50%; transform: translateX(-50%);
+    font-family: 'Share Tech Mono', monospace; font-size: 0.62rem;
+    letter-spacing: 0.18em; color: #ffd700; text-transform: uppercase;
+    background: rgba(255,215,0,0.1); border: 1px solid #ffd70044;
+    border-radius: 4px; padding: 4px 14px; z-index: 20;
+    pointer-events: none; opacity: 0; transition: opacity 0.4s;
+  }
+  #mode-badge.visible { opacity: 1; }
+
+  /* ── LEYENDA ── */
+  #legend {
+    position: fixed; left: 16px; bottom: 24px;
+    background: rgba(4,14,28,0.85); border: 1px solid #1a3a5c;
+    border-radius: 6px; padding: 12px 14px; z-index: 20;
+    backdrop-filter: blur(8px); pointer-events: none;
+  }
+  #legend h3 { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; letter-spacing: 0.18em; color: #4db8ff; text-transform: uppercase; margin-bottom: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; font-size: 0.66rem; color: #8ab8d8; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .legend-line { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── SPEED CONTROL ── */
+  #speed-ctrl {
+    position: fixed; right: 16px; bottom: 24px;
+    background: rgba(4,14,28,0.85); border: 1px solid #1a3a5c;
+    border-radius: 6px; padding: 11px 14px; z-index: 20; backdrop-filter: blur(8px);
+  }
+  #speed-ctrl label { font-family: 'Share Tech Mono', monospace; font-size: 0.58rem; color: #4db8ff; letter-spacing: 0.14em; display: block; margin-bottom: 6px; text-transform: uppercase; }
+  #speed-ctrl input[type=range] { width: 120px; accent-color: #ffd700; cursor: pointer; }
+
+  /* ── PART TOOLTIP ── */
+  #part-tooltip {
+    position: fixed; z-index: 30; pointer-events: none;
+    background: rgba(4,14,28,0.95); border: 1px solid #4db8ff;
+    border-radius: 4px; padding: 8px 12px; font-size: 0.68rem;
+    color: #c8e6ff; max-width: 220px; display: none;
+    backdrop-filter: blur(8px); font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.06em; line-height: 1.5;
+    box-shadow: 0 0 16px rgba(77,184,255,0.2);
+  }
+  #part-tooltip .tt-name { color: #ffd700; font-size: 0.7rem; margin-bottom: 4px; }
+  #controls-hint {
+    position: fixed; right: 16px; top: 18px;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.58rem;
+    color: #2a5a8a; letter-spacing: 0.08em; line-height: 1.7; z-index: 20; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+<div id="canvas-container"></div>
+
+<div id="title">
+  <h1>Telescopio Maksutov-Cassegrain</h1>
+  <p>SIMULACIÓN ÓPTICA 3D — TRAYECTORIA DE RAYOS DE LUZ</p>
+</div>
+
+<div id="mode-badge">● VISTA DESMONTADA</div>
+
+<div id="controls-hint">
+  🖱 ARRASTRAR — Rotar<br>
+  🖱 SCROLL — Zoom<br>
+  🖱 CLICK DER — Paneo
+</div>
+
+<!-- PANEL DESMONTAJE -->
+<div id="disassembly-panel">
+  <h3>// Componentes</h3>
+  <button class="part-btn active" id="btn-all" onclick="showAll()">
+    <span class="part-dot" style="background:#4db8ff"></span>ENSAMBLADO COMPLETO
+  </button>
+  <button class="part-btn" id="btn-tube" onclick="isolatePart('tube')">
+    <span class="part-dot" style="background:#5577aa"></span>TUBO PRINCIPAL
+  </button>
+  <button class="part-btn" id="btn-primary" onclick="isolatePart('primary')">
+    <span class="part-dot" style="background:#88aacc"></span>ESPEJO PARABÓLICO
+  </button>
+  <button class="part-btn" id="btn-secondary" onclick="isolatePart('secondary')">
+    <span class="part-dot" style="background:#aaccee"></span>ESPEJO HIPERBÓLICO
+  </button>
+  <button class="part-btn" id="btn-spider" onclick="isolatePart('spider')">
+    <span class="part-dot" style="background:#334455"></span>ARAÑA / SOPORTES
+  </button>
+  <button class="part-btn" id="btn-ocular" onclick="isolatePart('ocular')">
+    <span class="part-dot" style="background:#446688"></span>PORTAOCULAR
+  </button>
+  <button class="part-btn" id="btn-axis" onclick="isolatePart('axis')">
+    <span class="part-dot" style="background:#2255ff"></span>EJE ÓPTICO + FOCOS
+  </button>
+  <div class="ctrl-row">
+    <button class="ctrl-btn" onclick="explodeAll()">EXPLOTAR</button>
+    <button class="ctrl-btn red" onclick="showAll()">REENSAMBLAR</button>
+  </div>
+</div>
+
+<!-- PANEL INFO -->
+<div id="info-panel">
+  <h2>// Óptica del Sistema</h2>
+  <div class="info-step">
+    <span class="step-num">01</span>
+    <div class="step-text">
+      <strong>Recepción de Luz</strong>
+      Rayos paralelos al eje óptico provenientes de objetos astronómicos distantes ingresan al tubo.
+    </div>
+  </div>
+  <div class="info-step">
+    <span class="step-num">02</span>
+    <div class="step-text">
+      <strong>Espejo Parabólico</strong>
+      El espejo primario z=(x²+y²)/4f refleja y converge todos los rayos hacia el foco primario F₁.
+    </div>
+  </div>
+  <div class="info-step">
+    <span class="step-num">03</span>
+    <div class="step-text">
+      <strong>Espejo Hiperbólico</strong>
+      El espejo secundario (x²+y²)/b²−z²/a²=1 intercepta los rayos antes de F₁ y los redirige a través del orificio central del primario.
+    </div>
+  </div>
+  <div class="info-step">
+    <span class="step-num">04</span>
+    <div class="step-text">
+      <strong>Foco Final (Cassegrain)</strong>
+      Los rayos emergen detrás del espejo primario, formando imagen en F₂ con relación focal efectiva f/10–f/15.
+    </div>
+  </div>
+  <div class="formula-mini">
+    PARABOLOIDE: z = (x²+y²) / 4f<br>
+    HIPERBOLOIDE: x²/b² − z²/a² = 1<br>
+    EXCENTRICIDAD: ε = c/a &gt; 1<br>
+    DISEÑO: D. Maksutov, 1944
+  </div>
+</div>
+
+<div id="speed-ctrl">
+  <label>⚡ Velocidad Rayos</label>
+  <input type="range" id="speed-slider" min="0.2" max="3" step="0.1" value="1.0">
+</div>
+
+<div id="legend">
+  <h3>// Leyenda</h3>
+  <div class="legend-item"><div class="legend-line" style="background:#ffd700;"></div> Rayo de Luz</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ff6644;"></div> Foco Primario F₁</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#44ffaa;"></div> Foco Final F₂</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#88aacc; border-radius:0;"></div> Espejo Primario</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#aaccee; border-radius:0;"></div> Espejo Secundario</div>
+</div>
+
+<div id="part-tooltip">
+  <div class="tt-name" id="tt-name"></div>
+  <div id="tt-desc"></div>
+</div>
+
+<!-- Three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════
+//  MAKSUTOV-CASSEGRAIN — Simulación Óptica 3D con Desmontaje
+// ═══════════════════════════════════════════════════════════
+
+// ── ESTRELLAS DE FONDO (canvas 2D) ──
+(function() {
+  const c = document.getElementById('stars');
+  const ctx = c.getContext('2d');
+  c.width = window.innerWidth; c.height = window.innerHeight;
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random()*c.width, y = Math.random()*c.height;
+    const r = Math.random()*1.2, a = Math.random()*0.8+0.2;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle = `rgba(200,220,255,${a})`; ctx.fill();
+  }
+})();
+
+// ── SETUP THREE.JS ──
+const container = document.getElementById('canvas-container');
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(W, H); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = null;
+
+const camera = new THREE.PerspectiveCamera(45, W/H, 0.01, 100);
+camera.position.set(4.5, 2.5, 3.5);
+camera.lookAt(0,0,0);
+
+// ── ORBIT CONTROLS ──
+const controls = (() => {
+  let isRotating=false, isPanning=false, lastX=0, lastY=0;
+  let spherical = { theta:0.7, phi:1.1, radius:7 };
+  let target = new THREE.Vector3(0,0,0);
+  function updateCamera() {
+    const x = spherical.radius*Math.sin(spherical.phi)*Math.sin(spherical.theta);
+    const y = spherical.radius*Math.cos(spherical.phi);
+    const z = spherical.radius*Math.sin(spherical.phi)*Math.cos(spherical.theta);
+    camera.position.set(target.x+x, target.y+y, target.z+z);
+    camera.lookAt(target);
+  }
+  renderer.domElement.addEventListener('mousedown', e => {
+    if(e.button===0) isRotating=true; if(e.button===2) isPanning=true;
+    lastX=e.clientX; lastY=e.clientY;
+  });
+  window.addEventListener('mouseup', ()=>{ isRotating=false; isPanning=false; });
+  window.addEventListener('mousemove', e => {
+    const dx=e.clientX-lastX, dy=e.clientY-lastY;
+    lastX=e.clientX; lastY=e.clientY;
+    if(isRotating){spherical.theta-=dx*0.005; spherical.phi=Math.max(0.05,Math.min(Math.PI-0.05,spherical.phi+dy*0.005));}
+    if(isPanning){target.x-=dx*0.004; target.y+=dy*0.004;}
+    updateCamera();
+  });
+  renderer.domElement.addEventListener('wheel', e => {
+    spherical.radius=Math.max(1.5,Math.min(22,spherical.radius+e.deltaY*0.01));
+    updateCamera();
+  });
+  renderer.domElement.addEventListener('contextmenu', e=>e.preventDefault());
+  updateCamera();
+  return { update: updateCamera };
+})();
+
+// ── ILUMINACIÓN ──
+scene.add(new THREE.AmbientLight(0x1a2a3a, 2.0));
+const pl1 = new THREE.PointLight(0x6699cc, 1.5, 20); pl1.position.set(3,4,2); scene.add(pl1);
+const pl2 = new THREE.PointLight(0x334455, 1.0, 15); pl2.position.set(-3,-2,-3); scene.add(pl2);
+const rl  = new THREE.DirectionalLight(0x2244aa, 0.8); rl.position.set(-2,3,-2); scene.add(rl);
+
+// ── CONSTANTES ÓPTICAS ──
+const TUBE_R = 0.85, TUBE_L = 4.0, F = 1.6;
+const F_PRI  = new THREE.Vector3(0,0,0.9);
+const F_FIN  = new THREE.Vector3(0,0,-2.4);
+
+// ── MATERIALES ──
+// Tubo: casi invisible — solo un toque de borde azulado
+const tubeMat    = new THREE.MeshPhongMaterial({
+  color:0x2244aa, specular:0x88bbff, shininess:80,
+  transparent:true, opacity:0.055,          // muy transparente
+  side:THREE.DoubleSide,
+  depthWrite: false,                         // no bloquea el z-buffer → rayos visibles
+});
+const mirrorMat  = new THREE.MeshPhongMaterial({ color:0x7799bb, specular:0xffffff, shininess:120, side:THREE.DoubleSide });
+const mirror2Mat = new THREE.MeshPhongMaterial({ color:0x99bbcc, specular:0xffffff, shininess:140, side:THREE.DoubleSide });
+const strutMat   = new THREE.MeshPhongMaterial({ color:0x223344, specular:0x445566, shininess:30 });
+const ocularMat  = new THREE.MeshPhongMaterial({ color:0x0a1520, specular:0x224466, shininess:50 });
+// Wireframe del tubo (solo contorno)
+const tubeWireMat = new THREE.MeshBasicMaterial({
+  color:0x3366cc, wireframe:true, transparent:true, opacity:0.09
+});
+
+// ══════════════════════════════════
+//  GRUPOS POR COMPONENTE
+// ══════════════════════════════════
+const GROUPS = {
+  tube:      new THREE.Group(),
+  primary:   new THREE.Group(),
+  secondary: new THREE.Group(),
+  spider:    new THREE.Group(),
+  ocular:    new THREE.Group(),
+  axis:      new THREE.Group(),
+};
+
+// Posiciones originales (ensamblado)
+const ORIG_POS = {};
+// Posiciones de explosión (separadas)
+const EXPLODE_POS = {
+  tube:      new THREE.Vector3( 0,  3.2,  0),
+  primary:   new THREE.Vector3( 0,  0,   -3.8),
+  secondary: new THREE.Vector3( 0,  3.0,  3.0),
+  spider:    new THREE.Vector3( 0, -3.0,  3.0),
+  ocular:    new THREE.Vector3( 0, -3.0, -3.0),
+  axis:      new THREE.Vector3( 0,  0,    0),
+};
+
+Object.values(GROUPS).forEach(g => {
+  scene.add(g);
+  ORIG_POS[g.uuid] = g.position.clone();
+});
+
+// Guardar clave para cada grupo
+const GROUP_KEYS = {};
+Object.entries(GROUPS).forEach(([k,g]) => { GROUP_KEYS[g.uuid] = k; });
+
+// ══════════════════════════════════
+//  GEOMETRÍAS MATEMÁTICAS REALES
+// ══════════════════════════════════
+
+// Paraboloide: z = r²/(4f)
+function buildParaboloid(f, rMax, segments) {
+  const geo = new THREE.BufferGeometry();
+  const verts=[], normals=[], uvs=[];
+  const N=segments, M=80;
+  for(let i=0;i<=N;i++){
+    const r=(i/N)*rMax;
+    for(let j=0;j<=M;j++){
+      const theta=(j/M)*2*Math.PI;
+      const x=r*Math.cos(theta), y=r*Math.sin(theta);
+      const z=(r*r)/(4*f);
+      verts.push(x,y,z);
+      const dzdx=x/(2*f), dzdy=y/(2*f);
+      const len=Math.sqrt(dzdx*dzdx+dzdy*dzdy+1);
+      normals.push(-dzdx/len,-dzdy/len,1/len);
+      uvs.push(i/N,j/M);
+    }
+  }
+  const idx=[];
+  for(let i=0;i<N;i++) for(let j=0;j<M;j++){
+    const a=i*(M+1)+j, b=a+M+1;
+    idx.push(a,b,a+1,b,b+1,a+1);
+  }
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+  geo.setIndex(idx);
+  return geo;
+}
+
+// Hiperboloide: z = -a*sqrt(1+r²/b²)
+function buildHyperboloid(a, b, rMax, segments) {
+  const geo = new THREE.BufferGeometry();
+  const verts=[], normals=[], uvs=[];
+  const N=segments, M=60;
+  for(let i=0;i<=N;i++){
+    const r=(i/N)*rMax;
+    for(let j=0;j<=M;j++){
+      const theta=(j/M)*2*Math.PI;
+      const x=r*Math.cos(theta), y=r*Math.sin(theta);
+      const z=-a*Math.sqrt(1+(r*r)/(b*b));
+      verts.push(x,y,z);
+      const dzdx=-a*x/(b*b*Math.sqrt(1+r*r/(b*b)));
+      const dzdy=-a*y/(b*b*Math.sqrt(1+r*r/(b*b)));
+      const len=Math.sqrt(dzdx*dzdx+dzdy*dzdy+1);
+      normals.push(-dzdx/len,-dzdy/len,1/len);
+      uvs.push(i/N,j/M);
+    }
+  }
+  const idx=[];
+  for(let i=0;i<N;i++) for(let j=0;j<M;j++){
+    const a2=i*(M+1)+j, b2=a2+M+1;
+    idx.push(a2,b2,a2+1,b2,b2+1,a2+1);
+  }
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+  geo.setIndex(idx);
+  return geo;
+}
+
+// ══════════════════════════════════
+//  CONSTRUCCIÓN DE PARTES
+// ══════════════════════════════════
+
+// INFO de cada pieza para tooltip
+const PART_INFO = {
+  tube:      { name:'Tubo Principal', desc:'Carcasa estructural. Mantiene la alineación óptica y protege los espejos. Material: aluminio anodizado.' },
+  primary:   { name:'Espejo Parabólico', desc:'Espejo primario. Ecuación: z = (x²+y²)/(4f). Refleja rayos paralelos hacia F₁. Radio: '+TUBE_R.toFixed(2)+'u, f='+F+' u.' },
+  secondary: { name:'Espejo Hiperbólico', desc:'Espejo secundario convexo. Ecuación: (x²+y²)/b² − z²/a² = 1. Redirige los rayos hacia el foco final F₂.' },
+  spider:    { name:'Araña de Soporte', desc:'Estructura de 4 brazos que centra el espejo secundario en el eje óptico con mínima obstrucción de luz.' },
+  ocular:    { name:'Portaocular Cassegrain', desc:'Salida trasera del telescopio. Los rayos emergen aquí tras pasar por el orificio del espejo primario hacia F₂.' },
+  axis:      { name:'Eje Óptico + Focos', desc:'Eje central de simetría. F₁ (naranja): foco primario virtual. F₂ (verde): foco Cassegrain final donde se forma la imagen.' },
+};
+
+// ── TUBO ──
+function buildTube() {
+  const g = GROUPS.tube;
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(TUBE_R,TUBE_R,TUBE_L,64,1,true), tubeMat);
+  tube.rotation.x = Math.PI/2; tube.position.z = -0.2;
+  tube.userData = PART_INFO.tube; g.add(tube);
+
+  [-1.9,-0.6,0.8,1.8].forEach(z => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R+0.03,0.035,12,64), strutMat);
+    r.position.z=z; r.userData=PART_INFO.tube; g.add(r);
+  });
+
+  const frontCap = new THREE.Mesh(new THREE.RingGeometry(TUBE_R-0.08,TUBE_R+0.04,64), new THREE.MeshPhongMaterial({color:0x0a1520,side:THREE.DoubleSide}));
+  frontCap.position.z=1.82; frontCap.userData=PART_INFO.tube; g.add(frontCap);
+}
+
+// ── ESPEJO PRIMARIO ──
+function buildPrimary() {
+  const g = GROUPS.primary;
+  const pm = new THREE.Mesh(buildParaboloid(F, TUBE_R*0.95, 48), mirrorMat);
+  pm.position.z=-1.8; pm.rotation.x=Math.PI;
+  pm.userData=PART_INFO.primary; g.add(pm);
+
+  const back = new THREE.Mesh(new THREE.CircleGeometry(TUBE_R*0.95,64), new THREE.MeshPhongMaterial({color:0x0d1a26}));
+  back.position.z=-1.8; back.rotation.x=Math.PI; back.userData=PART_INFO.primary; g.add(back);
+
+  const hole = new THREE.Mesh(new THREE.RingGeometry(0,0.13,32), new THREE.MeshPhongMaterial({color:0x000000,side:THREE.DoubleSide}));
+  hole.position.z=-1.78; hole.userData=PART_INFO.primary; g.add(hole);
+
+  // Anillo de montura
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(TUBE_R*0.95,0.02,8,64), strutMat);
+  rim.position.z=-1.78; rim.userData=PART_INFO.primary; g.add(rim);
+}
+
+// ── ESPEJO SECUNDARIO ──
+function buildSecondary() {
+  const g = GROUPS.secondary;
+  const sm = new THREE.Mesh(buildHyperboloid(0.12,0.4,0.22,32), mirror2Mat);
+  sm.position.z=1.35; sm.userData=PART_INFO.secondary; g.add(sm);
+
+  // Montura del secundario
+  const mount = new THREE.Mesh(new THREE.TorusGeometry(0.22,0.018,8,32), strutMat);
+  mount.position.z=1.35; mount.userData=PART_INFO.secondary; g.add(mount);
+}
+
+// ── ARAÑA / SOPORTES ──
+function buildSpider() {
+  const g = GROUPS.spider;
+  [0,90,180,270].forEach(deg => {
+    const rad=deg*Math.PI/180;
+    const vane = new THREE.Mesh(new THREE.BoxGeometry(0.008,0.65,0.008), strutMat);
+    vane.position.set(Math.cos(rad)*0.32,Math.sin(rad)*0.32,1.35);
+    vane.lookAt(0,0,1.35); vane.userData=PART_INFO.spider; g.add(vane);
+  });
+}
+
+// ── PORTAOCULAR ──
+function buildOcular() {
+  const g = GROUPS.ocular;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,0.45,32), ocularMat);
+  body.rotation.x=Math.PI/2; body.position.z=-2.22; body.userData=PART_INFO.ocular; g.add(body);
+
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.18,0.025,8,32), strutMat);
+  ring.position.z=-2.0; ring.userData=PART_INFO.ocular; g.add(ring);
+
+  const eyecap = new THREE.Mesh(new THREE.CircleGeometry(0.17,32), new THREE.MeshPhongMaterial({color:0x000000}));
+  eyecap.position.z=-2.45; eyecap.userData=PART_INFO.ocular; g.add(eyecap);
+}
+
+// ── EJE ÓPTICO + FOCOS ──
+function buildAxis() {
+  const g = GROUPS.axis;
+  const axisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,2.2),new THREE.Vector3(0,0,-2.6)]);
+  const axisMat2 = new THREE.LineDashedMaterial({color:0x2255ff,dashSize:0.12,gapSize:0.07});
+  const axisLine = new THREE.Line(axisGeo,axisMat2); axisLine.computeLineDistances();
+  g.add(axisLine);
+
+  // F1
+  const f1 = new THREE.Mesh(new THREE.SphereGeometry(0.055,24,24), new THREE.MeshPhongMaterial({color:0xff6644,emissive:0xff6644,emissiveIntensity:0.8,transparent:true,opacity:0.9}));
+  f1.position.copy(F_PRI); f1.userData=PART_INFO.axis; g.add(f1);
+  const f1ring = new THREE.Mesh(new THREE.RingGeometry(0.07,0.11,32), new THREE.MeshBasicMaterial({color:0xff6644,transparent:true,opacity:0.4,side:THREE.DoubleSide}));
+  f1ring.position.copy(F_PRI); g.add(f1ring);
+
+  // F2
+  const f2 = new THREE.Mesh(new THREE.SphereGeometry(0.055,24,24), new THREE.MeshPhongMaterial({color:0x44ffaa,emissive:0x44ffaa,emissiveIntensity:0.8,transparent:true,opacity:0.9}));
+  f2.position.copy(F_FIN); f2.userData=PART_INFO.axis; g.add(f2);
+  const f2ring = new THREE.Mesh(new THREE.RingGeometry(0.07,0.11,32), new THREE.MeshBasicMaterial({color:0x44ffaa,transparent:true,opacity:0.4,side:THREE.DoubleSide}));
+  f2ring.position.copy(F_FIN); g.add(f2ring);
+
+  // Luces de foco
+  const fl1 = new THREE.PointLight(0xff6644,0.6,1.5); fl1.position.copy(F_PRI); g.add(fl1);
+  const fl2 = new THREE.PointLight(0x44ffaa,0.8,2.0); fl2.position.copy(F_FIN); g.add(fl2);
+
+  // Guardar refs para animar
+  g.userData.f1mesh=f1; g.userData.f2mesh=f2;
+  g.userData.f1ring=f1ring; g.userData.f2ring=f2ring;
+  g.userData.fl1=fl1; g.userData.fl2=fl2;
+}
+
+buildTube(); buildPrimary(); buildSecondary(); buildSpider(); buildOcular(); buildAxis();
+
+// ══════════════════════════════════
+//  RAYOS DE LUZ ANIMADOS
+// ══════════════════════════════════
+const rayMat = new THREE.LineBasicMaterial({color:0xffdd00,transparent:true,opacity:0.85});
+const NUM_RAYS = 12;
+const TRAIL = 0.25;
+let raySpeed = 1.0;
+
+const rayConfigs = [];
+for(let i=0;i<NUM_RAYS;i++){
+  const angle=(i/NUM_RAYS)*Math.PI*2;
+  const r=0.30+(i%3)*0.22;
+  rayConfigs.push({r,angle});
+}
+
+const rayObjects = rayConfigs.map(({r,angle})=>{
+  const cx=r*Math.cos(angle), cy=r*Math.sin(angle);
+  const mirrorHitZ = -1.8+(r*r)/(4*F)*0.5;
+  const p0=new THREE.Vector3(cx,cy,2.1);
+  const p1=new THREE.Vector3(cx,cy,mirrorHitZ);
+  const p2=new THREE.Vector3(cx*0.05,cy*0.05,F_PRI.z-0.04);
+  const p3=new THREE.Vector3(cx*0.02,cy*0.02,1.35);
+  const p4=new THREE.Vector3(0,0,F_FIN.z);
+  const pts=[p0,p1,p2,p3,p4];
+  const geo=new THREE.BufferGeometry().setFromPoints([p0,p1,p2,p3,p4]);
+  const line=new THREE.Line(geo,rayMat.clone());
+  line.userData.points=pts; line.userData.t=Math.random();
+  scene.add(line);
+  return line;
+});
+
+document.getElementById('speed-slider').addEventListener('input',e=>{ raySpeed=parseFloat(e.target.value); });
+
+function updateRays(dt){
+  animT+=dt*0.28*raySpeed;
+  rayObjects.forEach(line=>{
+    const {points,t:phase}=line.userData;
+    const head=((animT+phase)%1.0+1.0)%1.0, tail=Math.max(0,head-TRAIL);
+    const segLens=[];
+    for(let i=1;i<points.length;i++) segLens.push(points[i].distanceTo(points[i-1]));
+    const totalLen=segLens.reduce((a,b)=>a+b,0);
+    const tailDist=tail*totalLen, headDist=head*totalLen;
+    const pts=[]; let d=0;
+    for(let i=0;i<points.length-1;i++){
+      const segStart=d, segEnd=d+segLens[i];
+      if(segEnd>tailDist&&segStart<headDist){
+        const uS=Math.max(tailDist,segStart), uE=Math.min(headDist,segEnd);
+        pts.push(
+          new THREE.Vector3().lerpVectors(points[i],points[i+1],(uS-segStart)/segLens[i]),
+          new THREE.Vector3().lerpVectors(points[i],points[i+1],(uE-segStart)/segLens[i])
+        );
+      }
+      d=segEnd;
+    }
+    if(pts.length>=2){ line.geometry.setFromPoints(pts); line.geometry.computeBoundingSphere(); line.visible=true; }
+    else { line.visible=false; }
+    line.material.opacity=0.45+0.55*Math.sin(head*Math.PI);
+  });
+}
+
+// ══════════════════════════════════
+//  ETIQUETAS FLOTANTES
+// ══════════════════════════════════
+function makeLabel(text,worldPos){
+  const div=document.createElement('div');
+  div.style.cssText=`position:fixed;pointer-events:none;z-index:30;font-family:'Share Tech Mono',monospace;font-size:0.65rem;color:#c8e6ff;letter-spacing:0.1em;white-space:nowrap;background:rgba(4,14,28,0.75);border:1px solid #1a3a5c;border-radius:3px;padding:3px 8px;text-shadow:0 0 8px #4db8ff66;display:none;`;
+  div.textContent=text; document.body.appendChild(div);
+  return {div,worldPos:worldPos.clone()};
+}
+const labels=[
+  makeLabel('Espejo Parabólico', new THREE.Vector3(1.1,0.6,-1.6)),
+  makeLabel('Espejo Hiperbólico', new THREE.Vector3(0.5,0.4,1.5)),
+  makeLabel('Foco Primario F₁', new THREE.Vector3(0.3,0.25,F_PRI.z)),
+  makeLabel('Foco Final F₂', new THREE.Vector3(0.3,0.2,F_FIN.z)),
+];
+const _v3=new THREE.Vector3();
+function updateLabels(){
+  labels.forEach(({div,worldPos})=>{
+    _v3.copy(worldPos); _v3.project(camera);
+    if(_v3.z>1){div.style.display='none';return;}
+    div.style.left=((_v3.x+1)/2)*window.innerWidth+'px';
+    div.style.top=((-_v3.y+1)/2)*window.innerHeight+'px';
+    div.style.display='block';
+  });
+}
+
+// ══════════════════════════════════
+//  DESMONTAJE / EXPLOSIÓN
+// ══════════════════════════════════
+let currentMode = 'all'; // 'all' | 'explode' | nombre de parte
+const modeBadge = document.getElementById('mode-badge');
+
+// Targets de animación para cada grupo
+const animTargets = {};
+Object.keys(GROUPS).forEach(k => {
+  animTargets[k] = {
+    pos: GROUPS[k].position.clone(),
+    targetPos: GROUPS[k].position.clone(),
+    opacity: 1,
+    targetOpacity: 1,
+  };
+});
+
+function setGroupTarget(key, targetPos, targetOpacity) {
+  const at = animTargets[key];
+  at.targetPos.copy(targetPos);
+  at.targetOpacity = targetOpacity;
+}
+
+function showAll() {
+  currentMode = 'all';
+  modeBadge.classList.remove('visible');
+  Object.keys(GROUPS).forEach(k => {
+    setGroupTarget(k, new THREE.Vector3(0,0,0), 1);
+    GROUPS[k].visible = true;
+  });
+  // Activar rayos
+  rayObjects.forEach(l => l.visible = true);
+  // Botones
+  document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('active','hidden-part'));
+  document.getElementById('btn-all').classList.add('active');
+}
+
+function isolatePart(partKey) {
+  currentMode = partKey;
+  modeBadge.classList.add('visible');
+
+  // Posiciones de exposición por pieza (centrada en escena)
+  const isolatePositions = {
+    tube:      new THREE.Vector3(0,0,0),
+    primary:   new THREE.Vector3(0,0,1.8),   // mover hacia delante para ver la concavidad
+    secondary: new THREE.Vector3(0,0,-1.35), // mover al centro
+    spider:    new THREE.Vector3(0,0,-1.35),
+    ocular:    new THREE.Vector3(0,0,2.22),
+    axis:      new THREE.Vector3(0,0,0),
+  };
+
+  // Posiciones de "aparcado" para las otras piezas
+  const parkPositions = {
+    tube:      new THREE.Vector3( 0,  4, 0),
+    primary:   new THREE.Vector3(-4,  0, 0),
+    secondary: new THREE.Vector3( 4,  0, 0),
+    spider:    new THREE.Vector3( 4,  2, 0),
+    ocular:    new THREE.Vector3(-4, -2, 0),
+    axis:      new THREE.Vector3( 0, -4, 0),
+  };
+
+  Object.keys(GROUPS).forEach(k => {
+    if(k === partKey) {
+      setGroupTarget(k, isolatePositions[k], 1);
+      GROUPS[k].visible = true;
+    } else {
+      setGroupTarget(k, parkPositions[k], 0.08);
+    }
+  });
+
+  // Rayos solo visibles cuando está el eje
+  rayObjects.forEach(l => { l.visible = (partKey === 'axis'); });
+
+  // Botones UI
+  document.querySelectorAll('.part-btn').forEach(b => {
+    b.classList.remove('active');
+    b.classList.toggle('hidden-part', b.id !== 'btn-'+partKey && b.id !== 'btn-all');
+  });
+  document.getElementById('btn-'+partKey).classList.add('active');
+}
+
+function explodeAll() {
+  currentMode = 'explode';
+  modeBadge.classList.add('visible');
+  Object.keys(GROUPS).forEach(k => {
+    setGroupTarget(k, EXPLODE_POS[k], 1);
+    GROUPS[k].visible = true;
+  });
+  rayObjects.forEach(l => l.visible = false);
+  document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('active','hidden-part'));
+}
+
+// Hacer funciones globales para onclick HTML
+window.showAll = showAll;
+window.isolatePart = isolatePart;
+window.explodeAll = explodeAll;
+
+// ══════════════════════════════════
+//  RAYCASTER / HOVER TOOLTIP
+// ══════════════════════════════════
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const tooltip = document.getElementById('part-tooltip');
+const ttName = document.getElementById('tt-name');
+const ttDesc = document.getElementById('tt-desc');
+
+// Recopilar meshes interactivos
+const interactable = [];
+Object.entries(GROUPS).forEach(([key, g]) => {
+  g.traverse(obj => {
+    if(obj.isMesh || obj.isLine) {
+      if(!obj.userData._partKey) obj.userData._partKey = key;
+    }
+  });
+});
+
+window.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX/window.innerWidth)*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+
+  const meshes = [];
+  Object.values(GROUPS).forEach(g => { g.traverse(o => { if(o.isMesh) meshes.push(o); }); });
+  const hits = raycaster.intersectObjects(meshes, false);
+
+  if(hits.length > 0) {
+    const obj = hits[0].object;
+    const key = obj.userData._partKey;
+    const info = PART_INFO[key];
+    if(info) {
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX+14)+'px';
+      tooltip.style.top  = (e.clientY-10)+'px';
+      ttName.textContent = info.name;
+      ttDesc.textContent = info.desc;
+      document.body.style.cursor = 'pointer';
+    }
+  } else {
+    tooltip.style.display = 'none';
+    document.body.style.cursor = 'default';
+  }
+});
+
+// Clic en pieza → aislar esa pieza
+renderer.domElement.addEventListener('click', e => {
+  // Solo si no es arrastre
+  mouse.x = (e.clientX/window.innerWidth)*2-1;
+  mouse.y = -(e.clientY/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = [];
+  Object.values(GROUPS).forEach(g => { g.traverse(o => { if(o.isMesh) meshes.push(o); }); });
+  const hits = raycaster.intersectObjects(meshes, false);
+  if(hits.length > 0) {
+    const key = hits[0].object.userData._partKey;
+    if(key) {
+      if(currentMode === key) showAll();
+      else isolatePart(key);
+    }
+  }
+});
+
+// ══════════════════════════════════
+//  LOOP DE ANIMACIÓN
+// ══════════════════════════════════
+const clock = new THREE.Clock();
+let animT = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+
+  // Actualizar rayos
+  updateRays(dt);
+
+  // Animar posiciones de grupos (lerp suave)
+  const LERP = 0.06;
+  Object.keys(GROUPS).forEach(k => {
+    const g = GROUPS[k];
+    const at = animTargets[k];
+    g.position.lerp(at.targetPos, LERP);
+
+    // Opacity: recorrer meshes del grupo
+    if(Math.abs(at.opacity - at.targetOpacity) > 0.001) {
+      at.opacity += (at.targetOpacity - at.opacity) * 0.08;
+    }
+    g.traverse(obj => {
+      if(obj.material) {
+        if(Array.isArray(obj.material)) {
+          obj.material.forEach(m => { m.transparent=true; m.opacity = at.opacity * (m._baseOpacity !== undefined ? m._baseOpacity : 1); });
+        } else {
+          const base = obj.material._baseOpacity !== undefined ? obj.material._baseOpacity : 1;
+          obj.material.transparent = true;
+          obj.material.opacity = at.opacity * base;
+        }
+      }
+    });
+  });
+
+  // Guardar opacidades base la primera vez
+  Object.values(GROUPS).forEach(g => {
+    g.traverse(obj => {
+      if(obj.material && obj.material._baseOpacity === undefined) {
+        if(Array.isArray(obj.material)) obj.material.forEach(m => m._baseOpacity = m.opacity);
+        else obj.material._baseOpacity = obj.material.opacity;
+      }
+    });
+  });
+
+  // Pulso de focos
+  const axisG = GROUPS.axis;
+  if(axisG.userData.f1mesh) {
+    const s1=1+0.18*Math.sin(elapsed*4);
+    axisG.userData.f1mesh.scale.setScalar(s1);
+    axisG.userData.f1ring.scale.setScalar(1+0.28*Math.sin(elapsed*4+1));
+    const s2=1+0.18*Math.sin(elapsed*3.5+0.5);
+    axisG.userData.f2mesh.scale.setScalar(s2);
+    axisG.userData.f2ring.scale.setScalar(1+0.28*Math.sin(elapsed*3.5));
+    axisG.userData.fl1.intensity=0.4+0.4*Math.sin(elapsed*4);
+    axisG.userData.fl2.intensity=0.5+0.5*Math.sin(elapsed*3.5+0.5);
+  }
+
+  updateLabels();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── RESIZE ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+</script>
+</body>
+</html>
